@@ -8,3 +8,7 @@ coverage/
 !.env.example
 *.war
 .DS_Store
+
+# Local deployment metadata and private environment overrides
+.vercel/
+!.env.vercel.example
