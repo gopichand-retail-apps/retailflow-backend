@@ -1,0 +1,1532 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "RetailFlow POS API",
+    "version": "0.1.0",
+    "description": "Local portfolio-demo API for a synthetic retail store. Send W3C traceparent to correlate requests; responses include X-Trace-ID and errors include requestId/traceId. Money values are integer USD minor units. Demo tenders and the configurable tax rate are simulations only; this API is not for live sales or tax compliance."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:5002",
+      "description": "Local development server"
+    }
+  ],
+  "security": [
+    {
+      "sessionCookie": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health"
+    },
+    {
+      "name": "Authentication"
+    },
+    {
+      "name": "Overview"
+    },
+    {
+      "name": "Products"
+    },
+    {
+      "name": "Sales"
+    },
+    {
+      "name": "Settings"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "operationId": "getHealth",
+        "summary": "Check API health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "API process is ready.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "service"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "ok"
+                    },
+                    "service": {
+                      "const": "retailflow-api"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/version": {
+      "get": {
+        "tags": ["Health"],
+        "operationId": "getApplicationVersion",
+        "summary": "Read the backend artifact version",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "API service and SemVer release from the package manifest.",
+            "headers": {
+              "Cache-Control": {
+                "schema": { "type": "string", "const": "no-store" }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["service", "version"],
+                  "properties": {
+                    "service": { "type": "string", "const": "retailflow-api" },
+                    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/demo-login": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "operationId": "createDemoSession",
+        "summary": "Start a seeded local demo session",
+        "description": "Available only outside production. Sets an HttpOnly, SameSite=Lax session cookie. This is not a production identity provider.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "$ref": "#/components/schemas/DemoRole"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Demo session created.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly session cookie; token is never returned in the response body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "user",
+                    "demoMode"
+                  ],
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/DemoUser"
+                    },
+                    "demoMode": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/demo-roles": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "operationId": "listDemoRoles",
+        "summary": "List seeded local demo roles",
+        "description": "Available only outside production. Returns role keys for synthetic local accounts; business data and permissions remain server-owned.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Available synthetic roles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "roles"
+                  ],
+                  "properties": {
+                    "roles": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "$ref": "#/components/schemas/DemoRole"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "operationId": "getCurrentDemoUser",
+        "summary": "Get the signed-in demo user",
+        "responses": {
+          "200": {
+            "description": "Current session identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "user"
+                  ],
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/DemoUser"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "operationId": "deleteCurrentDemoSession",
+        "summary": "Revoke the current demo session",
+        "responses": {
+          "204": {
+            "description": "Session revoked and cookie expired."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/overview": {
+      "get": {
+        "tags": [
+          "Overview"
+        ],
+        "operationId": "getStoreOverview",
+        "summary": "Get synthetic store summary metrics",
+        "responses": {
+          "200": {
+            "description": "Store-scoped demo metrics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "operationId": "listProducts",
+        "summary": "Search the signed-in user's synthetic store catalog",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Search product name, SKU, or barcode. Maximum 80 characters.",
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Up to 100 products, sorted by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "products"
+                  ],
+                  "properties": {
+                    "products": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Product"
+                      },
+                      "maxItems": 100
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/v1/products/{productId}/adjustments": {
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "operationId": "adjustProductStock",
+        "summary": "Record a stock adjustment",
+        "description": "Supervisor and store_admin roles only. The inventory movement and audit event are persisted with the updated stock.",
+        "x-required-roles": [
+          "supervisor",
+          "store_admin"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProductId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "quantityDelta",
+                  "reason"
+                ],
+                "properties": {
+                  "quantityDelta": {
+                    "type": "integer",
+                    "minimum": -500,
+                    "maximum": 500,
+                    "not": {
+                      "const": 0
+                    }
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 160
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated stock count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stockQuantity"
+                  ],
+                  "properties": {
+                    "stockQuantity": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/sales": {
+      "get": {
+        "tags": [
+          "Sales"
+        ],
+        "operationId": "listSales",
+        "summary": "List sales visible to the signed-in role",
+        "description": "Cashiers see only their own sales; supervisors and store administrators see sales for their store.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sales ordered newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sales"
+                  ],
+                  "properties": {
+                    "sales": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SaleSummary"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Sales"
+        ],
+        "operationId": "createSale",
+        "summary": "Record a simulated sale",
+        "description": "The server recalculates pricing and validates tenders. Stock, sale lines, tenders, and audit event commit atomically. No real payment is processed.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Idempotent replay of the same sale request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Sale recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/sales/quote": {
+      "post": {
+        "tags": [
+          "Sales"
+        ],
+        "operationId": "quoteSale",
+        "summary": "Calculate a non-persisted sale quote",
+        "description": "Uses server-owned prices and demo tax settings. Does not reserve or change inventory.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Price breakdown in USD minor units.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "quote"
+                  ],
+                  "properties": {
+                    "quote": {
+                      "$ref": "#/components/schemas/PriceQuote"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/sales/{saleId}": {
+      "get": {
+        "tags": [
+          "Sales"
+        ],
+        "operationId": "getSale",
+        "summary": "Get a sale and its receipt details",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SaleId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sale details, tenders, and simulated return records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaleResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/sales/{saleId}/returns": {
+      "post": {
+        "tags": [
+          "Sales"
+        ],
+        "operationId": "createReturn",
+        "summary": "Record a simulated return and refund",
+        "description": "Supervisor and store_admin roles only. Refund amounts are computed by the server, stock is restored transactionally, and the audit event is allowlisted.",
+        "x-required-roles": [
+          "supervisor",
+          "store_admin"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SaleId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Return recorded. Duplicate same-key requests return the original return record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/settings": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "operationId": "getStoreSettings",
+        "summary": "Get store demo settings",
+        "responses": {
+          "200": {
+            "description": "Settings for the signed-in user's store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Settings"
+        ],
+        "operationId": "updateStoreSettings",
+        "summary": "Update the simulated tax rate",
+        "description": "Store_admin role only. The response has the same complete settings shape as GET. This is a demo arithmetic setting, not a legal tax rate.",
+        "x-required-roles": [
+          "store_admin"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "demoTaxBasisPoints"
+                ],
+                "properties": {
+                  "demoTaxBasisPoints": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated settings, including the store name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "retailflow_session",
+        "description": "HttpOnly server-side demo session. Obtain it through POST /api/v1/auth/demo-login in development."
+      }
+    },
+    "parameters": {
+      "ProductId": {
+        "name": "productId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "SaleId": {
+        "name": "saleId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "8-128 characters; letters, digits, dot, underscore, colon, and hyphen are accepted.",
+        "schema": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
+        }
+      }
+    },
+    "schemas": {
+      "DemoRole": {
+        "type": "string",
+        "enum": [
+          "cashier",
+          "supervisor",
+          "store_admin"
+        ]
+      },
+      "DemoUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "storeId",
+          "displayName",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "storeId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/DemoRole"
+          }
+        }
+      },
+      "Product": {
+        "type": "object",
+        "required": [
+          "id",
+          "sku",
+          "barcode",
+          "name",
+          "description",
+          "category",
+          "unitPriceMinor",
+          "stockQuantity",
+          "lowStockThreshold",
+          "imageUrl"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "barcode": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "unitPriceMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "USD cents; server-owned catalog price."
+          },
+          "stockQuantity": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lowStockThreshold": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "imageUrl": {
+            "type": "string"
+          }
+        }
+      },
+      "Overview": {
+        "type": "object",
+        "required": [
+          "salesToday",
+          "grossMinor",
+          "lowStockCount",
+          "productCount",
+          "returnsToday"
+        ],
+        "properties": {
+          "salesToday": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "grossMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lowStockCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "productCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "returnsToday": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SaleItemInput": {
+        "type": "object",
+        "required": [
+          "productId",
+          "quantity"
+        ],
+        "properties": {
+          "productId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "QuoteRequest": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/SaleItemInput"
+            }
+          },
+          "discountBasisPoints": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000,
+            "default": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckoutRequest": {
+        "type": "object",
+        "required": [
+          "items",
+          "tenders"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/SaleItemInput"
+            }
+          },
+          "discountBasisPoints": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000,
+            "default": 0
+          },
+          "tenders": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "items": {
+              "$ref": "#/components/schemas/TenderInput"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "TenderInput": {
+        "type": "object",
+        "required": [
+          "kind",
+          "amountMinor"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "sandbox"
+            ]
+          },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Tender amount in USD cents. Tender totals must equal the server quote."
+          }
+        },
+        "additionalProperties": false
+      },
+      "Tender": {
+        "type": "object",
+        "required": [
+          "kind",
+          "amountMinor"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "sandbox"
+            ]
+          },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "PriceLine": {
+        "type": "object",
+        "required": [
+          "unitPriceMinor",
+          "quantity",
+          "subtotalMinor",
+          "discountMinor",
+          "taxableMinor",
+          "taxMinor",
+          "totalMinor"
+        ],
+        "properties": {
+          "unitPriceMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "subtotalMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "discountMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "taxableMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "taxMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalMinor": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "PriceQuote": {
+        "type": "object",
+        "required": [
+          "lines",
+          "subtotalMinor",
+          "discountMinor",
+          "taxMinor",
+          "totalMinor"
+        ],
+        "properties": {
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceLine"
+            }
+          },
+          "subtotalMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "discountMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "taxMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalMinor": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SaleStatus": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "partially_returned",
+          "returned"
+        ]
+      },
+      "SaleSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "cashierId",
+          "receiptNumber",
+          "status",
+          "subtotalMinor",
+          "discountMinor",
+          "taxMinor",
+          "totalMinor",
+          "currency",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cashierId": {
+            "type": "string"
+          },
+          "receiptNumber": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SaleStatus"
+          },
+          "subtotalMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "discountMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "taxMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "currency": {
+            "const": "USD"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SaleLine": {
+        "type": "object",
+        "required": [
+          "id",
+          "productId",
+          "sku",
+          "name",
+          "unitPriceMinor",
+          "quantity",
+          "subtotalMinor",
+          "discountMinor",
+          "taxMinor",
+          "totalMinor",
+          "returnedQuantity",
+          "refundedMinor"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unitPriceMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "subtotalMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "discountMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "taxMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalMinor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "returnedQuantity": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "refundedMinor": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ReturnRecord": {
+        "type": "object",
+        "required": [
+          "id",
+          "reason",
+          "refundMinor",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "customer_request",
+              "damaged",
+              "other"
+            ]
+          },
+          "refundMinor": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SaleDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SaleSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "storeId",
+              "lines",
+              "tenders",
+              "returns"
+            ],
+            "properties": {
+              "storeId": {
+                "type": "string"
+              },
+              "lines": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SaleLine"
+                }
+              },
+              "tenders": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Tender"
+                }
+              },
+              "returns": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ReturnRecord"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "SaleResponse": {
+        "type": "object",
+        "required": [
+          "sale"
+        ],
+        "properties": {
+          "sale": {
+            "$ref": "#/components/schemas/SaleDetail"
+          }
+        }
+      },
+      "CheckoutResponse": {
+        "type": "object",
+        "required": [
+          "sale",
+          "duplicate"
+        ],
+        "properties": {
+          "sale": {
+            "$ref": "#/components/schemas/SaleDetail"
+          },
+          "duplicate": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ReturnRequest": {
+        "type": "object",
+        "required": [
+          "items",
+          "reason"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "required": [
+                "saleLineId",
+                "quantity"
+              ],
+              "properties": {
+                "saleLineId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "customer_request",
+              "damaged",
+              "other"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReturnResponse": {
+        "type": "object",
+        "required": [
+          "return"
+        ],
+        "properties": {
+          "return": {
+            "type": "object",
+            "required": [
+              "id",
+              "saleId",
+              "refundMinor",
+              "reason"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "saleId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "refundMinor": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "customer_request",
+                  "damaged",
+                  "other"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "StoreSettings": {
+        "type": "object",
+        "required": [
+          "name",
+          "demoTaxBasisPoints"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "demoTaxBasisPoints": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Simulation input only; not a legal tax rate."
+          }
+        }
+      },
+      "SettingsResponse": {
+        "type": "object",
+        "required": [
+          "settings"
+        ],
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/StoreSettings"
+          }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "requestId",
+              "traceId"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "traceId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Request validation failed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Authentication is required or the session has expired.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The current role is not permitted to perform the action.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "The requested resource was not found or is outside the current role's scope.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Stock, idempotency, or return-state conflict.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Demo sign-in rate limit exceeded.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      }
+    }
+  }
+}
