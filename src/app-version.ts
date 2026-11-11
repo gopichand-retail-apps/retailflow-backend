@@ -1,3 +1,3 @@
-import packageMetadata from '../package.json' with { type: 'json' };
+import packageMetadata from '../package.json' with { type: 'json' }
 
-export const APP_VERSION = packageMetadata.version;
+export const APP_VERSION = packageMetadata.version
