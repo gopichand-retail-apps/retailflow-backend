@@ -15,12 +15,15 @@ export async function createReturn(input: {
 }) {
   const { database, user, saleId, body, idempotencyKey } = input
   const requestHash = hashRequest(body)
-  const existing = await findReturnByKey(database, idempotencyKey, requestHash)
+  const scope: ReplayScope = { user, saleId, requestHash }
+  // Authorize the caller against the sale before any replay lookup can return a stored result.
+  await findSale(database, saleId, user)
+  const existing = await findReturnByKey(database, scope, idempotencyKey)
   if (existing) return getReturn(database, existing.id)
 
   return database.transaction(async () => {
     const sale = await findSale(database, saleId, user, true)
-    const duplicate = await findReturnByKey(database, idempotencyKey, requestHash)
+    const duplicate = await findReturnByKey(database, scope, idempotencyKey)
     if (duplicate) return getReturn(database, duplicate.id)
 
     const lines = await listSaleLines(database, saleId)
@@ -37,7 +40,7 @@ export async function createReturn(input: {
       [returnId, user.storeId, sale.id, user.id, idempotencyKey, requestHash, body.reason, refundMinor],
     )
     if (inserted.rows.length === 0) {
-      const concurrentDuplicate = await findReturnByKey(database, idempotencyKey, requestHash)
+      const concurrentDuplicate = await findReturnByKey(database, scope, idempotencyKey)
       if (concurrentDuplicate) return getReturn(database, concurrentDuplicate.id)
       throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'Return request was already processed')
     }
@@ -80,13 +83,31 @@ function calculateReturnItems(lines: SaleLineRow[], body: ReturnInput) {
   })
 }
 
-async function findReturnByKey(database: RetailDatabase, key: string, requestHash: string) {
-  const result = await database.query<{ id: string; requestHash: string }>(
-    'SELECT id, request_hash AS "requestHash" FROM returns WHERE idempotency_key = $1',
+interface ReplayScope {
+  user: DemoUser
+  saleId: string
+  requestHash: string
+}
+
+async function findReturnByKey(database: RetailDatabase, scope: ReplayScope, key: string) {
+  const result = await database.query<{
+    id: string
+    requestHash: string
+    storeId: string
+    supervisorId: string
+    saleId: string
+  }>(
+    `SELECT id, request_hash AS "requestHash", store_id AS "storeId",
+      supervisor_id AS "supervisorId", sale_id AS "saleId"
+     FROM returns WHERE idempotency_key = $1`,
     [key],
   )
   const duplicate = result.rows[0]
-  if (duplicate && duplicate.requestHash !== requestHash) {
+  if (!duplicate) return undefined
+
+  // A key replays only for the store, operator and sale that created it, and only for the same payload.
+  const sameOwner = duplicate.storeId === scope.user.storeId && duplicate.supervisorId === scope.user.id
+  if (!sameOwner || duplicate.saleId !== scope.saleId || duplicate.requestHash !== scope.requestHash) {
     throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'That key was already used for a different return')
   }
   return duplicate
