@@ -168,7 +168,11 @@ returnable quantities, computes the refund from the original sale lines, and
 commits return lines, stock restoration, sale status, and audit event together.
 An over-return is rejected with `409 RETURN_QUANTITY_EXCEEDED`; idempotency and
 transaction serialization prevent a concurrent duplicate from restoring stock
-twice.
+twice. The caller is authorized against the sale (store and role) before the
+idempotency key is looked up, so a return in another store is `404 SALE_NOT_FOUND`
+and never replays. Within the store, a stored return replays only for the
+supervisor who recorded it and for the same sale and payload; anything else is
+`409 IDEMPOTENCY_CONFLICT`. Checkout applies the same store-and-operator rule.
 
 #### Inventory and Settings
 
@@ -268,7 +272,7 @@ CI configuration is listed in section 3. Run the configured checks before mergin
 - **Layered API:** Express middleware establishes request/security context; versioned routes validate request and role; domain services own pricing, checkout, inventory, and returns; database helpers own parameterized PGlite queries and transactions.
 - **Server-authoritative commands:** the browser may preview a basket, but the API recalculates prices/tax, validates inventory and role, and persists the resulting sale/return. DTOs are the client contract; UI state is not trusted.
 - **Transactional state changes:** checkout, returns, inventory adjustments, and audit records commit or roll back together. Return quantities derive from original sale lines; stock cannot become negative.
-- **Idempotent recovery:** checkout/return retries use stable idempotency keys. Offline cash drafts are validated browser-local intents, never completed sales until acknowledged by the API.
+- **Idempotent recovery:** checkout/return retries use stable idempotency keys. Offline cash drafts are validated browser-local intents, never completed sales until acknowledged by the API. A stored key replays only for the store and operator that created it, and a return key only for its own sale; every other caller receives `409 IDEMPOTENCY_CONFLICT` and no stored result.
 - **Session boundary:** synthetic role sessions are server-issued and local-only; authorization is enforced per request. Role discovery/login is disabled in production, and no external identity provider is configured.
 
 Failure paths are part of the workflows above: stale/invalid input and denied roles do not persist a sale; a transaction failure rolls back linked records; a stock/return conflict leaves the sale and inventory unchanged; API outages keep offline cash drafts pending for retry with the original idempotency key.

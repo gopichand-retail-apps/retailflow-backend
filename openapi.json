@@ -784,7 +784,7 @@
         "name": "Idempotency-Key",
         "in": "header",
         "required": true,
-        "description": "8-128 characters; letters, digits, dot, underscore, colon, and hyphen are accepted.",
+        "description": "8-128 characters; letters, digits, dot, underscore, colon, and hyphen are accepted. A key replays only for the store and operator that created it, and a return key only for its sale; any other caller receives 409 IDEMPOTENCY_CONFLICT.",
         "schema": {
           "type": "string",
           "minLength": 8,

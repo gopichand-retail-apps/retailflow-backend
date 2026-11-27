@@ -52,6 +52,10 @@ data-flow, schema, and workflow diagrams, and
 prototype's trust boundaries and unresolved risks.
 
 All state-changing sales and return requests require an `Idempotency-Key` header.
+A key replays only for the store and operator that created it (a return key also
+stays bound to its sale), and only for an identical payload. Any other caller gets
+`409 IDEMPOTENCY_CONFLICT`, and a return is authorized against the sale before any
+stored result is replayed.
 The server validates input, enforces store roles, calculates prices, and writes
 inventory, sale, tender, return, and audit records in transactions.
 

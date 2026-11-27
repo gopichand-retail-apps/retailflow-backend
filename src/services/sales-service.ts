@@ -149,14 +149,22 @@ export async function saleDetails(database: RetailDatabase, saleId: string, user
   }
 }
 
-async function findExistingSale(database: RetailDatabase, idempotencyKey: string, requestHash: string) {
-  const result = await database.query<{ id: string; requestHash: string }>(
-    `SELECT id, request_hash AS "requestHash" FROM sales WHERE idempotency_key = $1`,
+async function findExistingSale(
+  database: RetailDatabase,
+  scope: { user: DemoUser; requestHash: string },
+  idempotencyKey: string,
+) {
+  const result = await database.query<{ id: string; requestHash: string; storeId: string; cashierId: string }>(
+    `SELECT id, request_hash AS "requestHash", store_id AS "storeId", cashier_id AS "cashierId"
+     FROM sales WHERE idempotency_key = $1`,
     [idempotencyKey],
   )
   const existing = result.rows[0]
+  if (!existing) return undefined
 
-  if (existing && existing.requestHash !== requestHash) {
+  // A key replays only for the store and operator that created it, and only for the same payload.
+  const sameOwner = existing.storeId === scope.user.storeId && existing.cashierId === scope.user.id
+  if (!sameOwner || existing.requestHash !== scope.requestHash) {
     throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'That key was already used for a different checkout')
   }
 
@@ -223,12 +231,13 @@ export async function createSale(
 ): Promise<{ saleId: string; duplicate: boolean }> {
   assertDiscountAllowed(user, body.discountBasisPoints)
   const requestHash = hashRequest(body)
-  const duplicate = await findExistingSale(database, idempotencyKey, requestHash)
+  const scope = { user, requestHash }
+  const duplicate = await findExistingSale(database, scope, idempotencyKey)
   if (duplicate) return { saleId: duplicate.id, duplicate: true }
 
   const items = mergeSaleItems(body.items)
   return database.transaction(async () => {
-    const concurrentDuplicate = await findExistingSale(database, idempotencyKey, requestHash)
+    const concurrentDuplicate = await findExistingSale(database, scope, idempotencyKey)
     if (concurrentDuplicate) return { saleId: concurrentDuplicate.id, duplicate: true }
     return persistSale({ database, user, body, items, idempotencyKey, requestHash })
   })
@@ -269,7 +278,7 @@ async function persistSale(input: {
     price,
   })
   if (!inserted) {
-    const existing = await findExistingSale(database, idempotencyKey, requestHash)
+    const existing = await findExistingSale(database, { user, requestHash }, idempotencyKey)
     return { saleId: requireValue(existing).id, duplicate: true }
   }
 
